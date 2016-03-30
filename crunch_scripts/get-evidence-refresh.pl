@@ -1,0 +1,115 @@
+#!/usr/bin/perl
+#
+BEGIN {
+  foreach $key (keys(%ENV)) {
+    if ($key eq "PATH") {
+      foreach $z (split(/:/, $ENV{$key})) {
+        push @INC, $z;
+      }
+    }
+  }
+  push @INC, ".";
+}
+
+use JSON;
+#use Safeget;
+
+if ( $ENV{LAST_INFILENAME} ne 'get-evidence.json' ) {
+    exec('cat');
+    die;
+}
+
+#open STDOUT, '|-', 'mrs-esp-freq' if exists $ENV{'KNOB_ESP_TARBALL'};
+open STDOUT, '|-', 'esp-freq.rb' if exists $ENV{'KNOB_ESP_TARBALL'};
+
+my $json = new JSON;
+eval { $json->allow_blessed; };    # new version of JSON
+local $JSON::ConvBlessed = 1;      # old version
+
+$data_dir = $ENV{MR_JOB_TMP};
+#Safeget::wh_file( $ENV{KNOB_GETEV_JSON}, "$data_dir/getev-latest.json.gz" );
+`cp $ENV{KNOB_GETEV_JSON} $data_dir/getev-latest.json.gz`;
+
+my %latest;
+open LATEST, '-|', 'gzip', '-cdf', "$data_dir/getev-latest.json.gz";
+while (<LATEST>) {
+    my $variant = eval { $json->decode($_) } || $json->jsonToObj($_);
+    warn "unreadable $_", next if !$variant;
+    if ( $variant->{dbsnp_id} ) {
+        $latest{ $variant->{dbsnp_id} } = $variant;
+    }
+    if ( $variant->{aa_change} ) {
+        $latest{ $variant->{gene}, $variant->{aa_change_short} } = $variant;
+    }
+}
+
+`rm -f $data_dir/getev-latest.json.gz`;
+
+my %copyto = qw{
+  overall_frequency_n num
+  overall_frequency_d denom
+  qualified_impact qualified_impact
+  impact impact
+  in_omim in_omim
+  in_pharmgkb in_pharmgkb
+  in_gwas in_gwas
+  summary_short summary_short
+  variant_quality variant_quality
+  quality_scores quality_scores
+  max_or_disease_name max_or_disease_name
+  max_or_or max_or_or
+  pph2_score pph2_score
+  genetests_testable genetests_testable
+  genetests_reviewed genetests_reviewed
+  gene_in_genetests gene_in_genetests
+  suff_eval suff_eval
+  variant_id variant_id
+};
+
+while (<>) {
+    my $orig = $_;
+    my $hit = eval { $json->decode($_) } || $json->jsonToObj($_);
+    my $variant;
+    if ( $hit->{amino_acid_change} ) {
+        my $aa_change = $hit->{amino_acid_change};
+        $aa_change =~ s/\*/X/g;
+        $variant = $latest{ $hit->{gene}, $aa_change };
+    }
+    if ( !$variant ) {
+        for ( split( ',', $hit->{dbSNP} ) ) {
+            $variant = $variant || $latest{$_};
+        }
+    }
+    if ($variant) {
+        $hit->{'GET-Evidence'} = "Y";
+        for ( keys %copyto ) {
+            if ( exists $variant->{$_} ) {
+                $hit->{ $copyto{$_} } = $variant->{$_};
+            }
+        }
+        if ( !exists $variant->{'suff_eval'} ) {
+            $hit->{'suff_eval'} =
+              ( $hit->{'qualified_impact'} =~ /insufficiently evaluated/i )
+              ? JSON::False
+              : JSON::True;
+        }
+        if ( !exists $variant->{'quality_scores'} ) {
+            $hit->{'quality_scores'} = [
+                map {
+                    exists( $variant->{ 'qualityscore_' . $_ } )
+                      ? $variant->{ 'qualityscore_' . $_ }
+                      : '-'
+                } qw(in_silico in_vitro case_control familial severity treatability penetrance)
+            ];
+            $hit->{'variant_quality'} =
+              join( '', @{ $hit->{'quality_scores'} } );
+        }
+        my $out = eval { $json->encode($hit) } || $json->objToJson($hit);
+        $out =~ s/"JSON::True"/true/g;
+        $out =~ s/"JSON::False"/false/g;
+        print "$out\n";
+    }
+    else {
+        print $orig;
+    }
+}

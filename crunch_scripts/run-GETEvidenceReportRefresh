@@ -1,0 +1,35 @@
+#!/bin/bash
+
+set -e
+set -o pipefail
+
+export PATH=$PATH:$CRUNCH_SRC:$CRUNCH_SRC/crunch_scripts:$CRUNCH_SRC/crunch_scripts/bin:.
+. <( arv-dax setup )
+
+
+mntdir=`arv-dax keep`
+
+jobparam=`arv-dax script_parameters`
+
+GETEV_LATEST=$mntdir/`echo "$jobparam" | jq -r '.GETEV_LATEST'`
+inp_dir=$mntdir/`echo "$jobparam" | jq -r '.INPUT_COLLECTION'`
+GET_EVIDENCE_JSON=$inp_dir/out-data/get-evidence.json
+
+## DEBUG
+echo ">>>>>>>>>>>>>>>>>>>>>>>>>> startring get-evidence-refresh.pl ($inp_dir, $GET_EVIDENCE_JSON, $GETEV_LATEST)"
+
+mkdir -p out-data
+
+cp -R $inp_dir/out-data/* out-data/
+rm -f out-data/get-evidence.json
+
+cat $GET_EVIDENCE_JSON | \
+  LC_ALL='en_US.UTF-8' \
+  LAST_INFILENAME='get-evidence.json' \
+  KNOB_GETEV_JSON=$GETEV_LATEST \
+  MR_JOB_TMP='/tmp' \
+  get-evidence-refresh.pl > out-data/get-evidence.json
+
+
+arv-dax task finish
+exit 0
