@@ -12,11 +12,11 @@ mntdir=`arv-dax keep`
 jobparam=`arv-dax script_parameters`
 
 GETEV_LATEST=$mntdir/`echo "$jobparam" | jq -r '.GETEV_LATEST'`
-inp_dir=$mntdir/`echo "$jobparam" | jq -r '.INPUT_COLLECTION'`
+inp_dir=$mntdir/`echo "$jobparam" | jq -r '.INPUT_COLLECTION'`/output
 GET_EVIDENCE_JSON=$inp_dir/out-data/get-evidence.json
 
 ## DEBUG
-echo ">>>>>>>>>>>>>>>>>>>>>>>>>> startring get-evidence-refresh.pl ($inp_dir, $GET_EVIDENCE_JSON, $GETEV_LATEST)"
+echo ">>>>>>>>>>>>>>>>>>>>>>>>>> starting get-evidence-refresh.pl ($inp_dir, $GET_EVIDENCE_JSON, $GETEV_LATEST)"
 
 mkdir -p out-data
 
